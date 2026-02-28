@@ -349,19 +349,25 @@ def main() -> None:
     )
     parser.add_argument("--ckpt", type=str, default=None)
     parser.add_argument("--data", type=str, default="Dataset/demo.npz")
-    parser.add_argument("--side", type=str, default="right", choices=("right", "left"))
+    parser.add_argument(
+        "--side", type=str, default="both", choices=("right", "left", "both")
+    )
     args = parser.parse_args()
 
-    source_hand = f"xarm7_inspire_{args.side}"
-    target_hands = [
-        f"xarm7_xhand_{args.side}",
-        f"xarm7_ability_{args.side}",
-        f"xarm7_inspire_{args.side}",
-        f"xarm7_paxini_{args.side}",
+    sides = ("right", "left") if args.side == "both" else (args.side,)
+    trainer_hands = [
+        hand_name
+        for side in sides
+        for hand_name in (
+            f"xarm7_xhand_{side}",
+            f"xarm7_ability_{side}",
+            f"xarm7_inspire_{side}",
+            f"xarm7_paxini_{side}",
+        )
     ]
 
     config = TrainingConfig()
-    trainer = CrossEmbodimentTrainer(target_hands, config)
+    trainer = CrossEmbodimentTrainer(trainer_hands, config)
     ckpt_path = (
         Path(args.ckpt).expanduser().resolve()
         if args.ckpt is not None
@@ -370,57 +376,66 @@ def main() -> None:
     payload = torch.load(ckpt_path, map_location="cpu")
     trainer.load_autoencoders_from_payload(payload)
 
-    with np.load(Path(args.data).expanduser().resolve()) as dataset:
-        source_qpos = torch.as_tensor(dataset[f"{args.side}_qpos"], dtype=torch.float32)
-
-    source_norm = trainer.normalized_qpos(source_hand, source_qpos).to(
-        device=config.device
-    )
-
-    with torch.no_grad():
-        latents = encode_hand_sequence_eepose(
-            trainer=trainer, hand_name=source_hand, qpos=source_norm
-        )
-        decoded = {
-            hand_name: decode_hand_sequence_eepose(
-                trainer=trainer,
-                hand_name=hand_name,
-                latents=latents,
-                evaluation_config=EvaluationConfig(),
-            )
-            .detach()
-            .cpu()
-            for hand_name in target_hands
-        }
-
     recording_name = f"hand_latent_real_data_{args.side}"
     rr.init(recording_name, spawn=True)
     recording = rr.get_global_data_recording()
-    overlap_offset = np.zeros(3, dtype=np.float32)
-    overlap_offsets = np.repeat(
-        overlap_offset.reshape(1, 3), source_norm.shape[0], axis=0
-    )
 
-    source_array = source_norm.detach().cpu().numpy()
-    visualize_hand_motion(
-        hand_name=source_hand,
-        joint_series=source_array,
-        recording_name=recording_name,
-        recording=recording,
-        entity_path_prefix=f"{source_hand}_origin",
-        per_frame_root_offsets=overlap_offsets,
-    )
+    with np.load(Path(args.data).expanduser().resolve()) as dataset:
+        for side in sides:
+            source_hand = f"xarm7_inspire_{side}"
+            target_hands = [
+                f"xarm7_xhand_{side}",
+                f"xarm7_ability_{side}",
+                f"xarm7_inspire_{side}",
+                f"xarm7_paxini_{side}",
+            ]
+            source_qpos = torch.as_tensor(dataset[f"{side}_qpos"], dtype=torch.float32)
+            source_norm = trainer.normalized_qpos(source_hand, source_qpos).to(
+                device=config.device
+            )
 
-    for hand_name in target_hands:
-        series = decoded[hand_name].numpy()
-        visualize_hand_motion(
-            hand_name=hand_name,
-            joint_series=series,
-            recording_name=recording_name,
-            recording=recording,
-            entity_path_prefix=f"{hand_name}_decode",
-            per_frame_root_offsets=overlap_offsets,
-        )
+            with torch.no_grad():
+                latents = encode_hand_sequence_eepose(
+                    trainer=trainer, hand_name=source_hand, qpos=source_norm
+                )
+                decoded = {
+                    hand_name: decode_hand_sequence_eepose(
+                        trainer=trainer,
+                        hand_name=hand_name,
+                        latents=latents,
+                        evaluation_config=EvaluationConfig(),
+                    )
+                    .detach()
+                    .cpu()
+                    for hand_name in target_hands
+                }
+
+            side_offset = np.array(
+                [0.0, 0.0 if side == "right" else 0.8, 0.0], dtype=np.float32
+            )
+            overlap_offsets = np.repeat(
+                side_offset.reshape(1, 3), source_norm.shape[0], axis=0
+            )
+            source_array = source_norm.detach().cpu().numpy()
+            visualize_hand_motion(
+                hand_name=source_hand,
+                joint_series=source_array,
+                recording_name=recording_name,
+                recording=recording,
+                entity_path_prefix=f"{source_hand}_origin",
+                per_frame_root_offsets=overlap_offsets,
+            )
+
+            for hand_name in target_hands:
+                series = decoded[hand_name].numpy()
+                visualize_hand_motion(
+                    hand_name=hand_name,
+                    joint_series=series,
+                    recording_name=recording_name,
+                    recording=recording,
+                    entity_path_prefix=f"{hand_name}_decode",
+                    per_frame_root_offsets=overlap_offsets,
+                )
 
 
 if __name__ == "__main__":
