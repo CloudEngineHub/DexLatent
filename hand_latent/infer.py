@@ -22,6 +22,7 @@ from hand_latent.model import (
 )
 from hand_latent.visualize import visualize_hand_motion
 
+
 @dataclass
 class EvaluationConfig:
     """Inference-time IK hyper-parameters.
@@ -62,7 +63,9 @@ def _normalize_quaternion(quaternion: torch.Tensor) -> torch.Tensor:
     normalized_xyzw = scipy_rotation.from_quat(xyzw).as_quat()
     wxyz = np.concatenate([normalized_xyzw[:, 3:4], normalized_xyzw[:, :3]], axis=1)
     sign = np.where(wxyz[:, :1] < 0.0, -1.0, 1.0)
-    normalized = torch.from_numpy(wxyz * sign).to(device=batch.device, dtype=batch.dtype)
+    normalized = torch.from_numpy(wxyz * sign).to(
+        device=batch.device, dtype=batch.dtype
+    )
     return normalized[0] if squeeze else normalized
 
 
@@ -142,11 +145,18 @@ def compute_alignment_points(
             device=fingertip_positions.device,
             dtype=fingertip_positions.dtype,
         )
-    pair_indices = torch.tensor(pinch_pairs, device=fingertip_positions.device, dtype=torch.long)
+    pair_indices = torch.tensor(
+        pinch_pairs, device=fingertip_positions.device, dtype=torch.long
+    )
     first_indices = pair_indices[:, 0]
     second_indices = pair_indices[:, 1]
-    midpoints = 0.5 * (fingertip_positions[:, first_indices, :] + fingertip_positions[:, second_indices, :])
-    normalized_weights = weights.to(device=fingertip_positions.device, dtype=fingertip_positions.dtype)
+    midpoints = 0.5 * (
+        fingertip_positions[:, first_indices, :]
+        + fingertip_positions[:, second_indices, :]
+    )
+    normalized_weights = weights.to(
+        device=fingertip_positions.device, dtype=fingertip_positions.dtype
+    )
     normalizer = torch.clamp_min(normalized_weights.sum(dim=1, keepdim=True), 1.0e-8)
     return (midpoints * normalized_weights.unsqueeze(-1)).sum(dim=1) / normalizer
 
@@ -192,9 +202,13 @@ def encode_hand_sequence_eepose(
         alignment = compute_alignment_points(fingertip_positions, pinch_pairs, weights)
 
     if arm_states.shape[0] > 0:
-        cache_state.eepose_encode_arm = arm_states[-1].detach().to(device="cpu", dtype=torch.float32).clone()
+        cache_state.eepose_encode_arm = (
+            arm_states[-1].detach().to(device="cpu", dtype=torch.float32).clone()
+        )
 
-    return torch.cat([alignment.detach(), wrist_quaternion.detach(), mean_hand.detach()], dim=1)
+    return torch.cat(
+        [alignment.detach(), wrist_quaternion.detach(), mean_hand.detach()], dim=1
+    )
 
 
 def decode_hand_sequence_eepose(
@@ -225,8 +239,12 @@ def decode_hand_sequence_eepose(
         Decoded normalized target qpos sequence.
     """
 
-    cache_state = decode_state if decode_state is not None else trainer.decode_state(hand_name)
-    eval_config = evaluation_config if evaluation_config is not None else EvaluationConfig()
+    cache_state = (
+        decode_state if decode_state is not None else trainer.decode_state(hand_name)
+    )
+    eval_config = (
+        evaluation_config if evaluation_config is not None else EvaluationConfig()
+    )
     device = trainer.config.device
 
     latents_device = latents.to(device=device, dtype=torch.float32)
@@ -240,21 +258,29 @@ def decode_hand_sequence_eepose(
         qpos_hand = autoencoder.hand_decoder(latent_hand)
 
     cached_arm = (
-        cache_state.eepose_decode_arm.to(device=device, dtype=qpos_hand.dtype).detach().clone()
+        cache_state.eepose_decode_arm.to(device=device, dtype=qpos_hand.dtype)
+        .detach()
+        .clone()
         if cache_state.eepose_decode_arm is not None
         else None
     )
     model = trainer.hand_models[hand_name]
     pinch_pairs = list(trainer.pinch_pairs_for_hand(hand_name))
     batch = latents_device.shape[0]
-    arm_solutions = torch.zeros(batch, trainer.arm_dof, dtype=qpos_hand.dtype, device=device)
+    arm_solutions = torch.zeros(
+        batch, trainer.arm_dof, dtype=qpos_hand.dtype, device=device
+    )
     previous_arm = None if cached_arm is None else cached_arm.detach().clone()
-    default_arm_seed = clone_default_arm_cache_pose().to(device=device, dtype=qpos_hand.dtype)
+    default_arm_seed = clone_default_arm_cache_pose().to(
+        device=device, dtype=qpos_hand.dtype
+    )
 
     for frame_index in range(batch):
         hand_frame = qpos_hand[frame_index]
         arm_seed = default_arm_seed if previous_arm is None else previous_arm
-        combined_seed = trainer._merge_qpos(arm_seed.unsqueeze(0), hand_frame.unsqueeze(0))
+        combined_seed = trainer._merge_qpos(
+            arm_seed.unsqueeze(0), hand_frame.unsqueeze(0)
+        )
         tips_seed, _ = model.forward_with_wrist_pose(combined_seed)
         _, _, weights_seed = compute_pinch_loss(
             tips_seed,
@@ -272,14 +298,18 @@ def decode_hand_sequence_eepose(
             pinch_pairs=pinch_pairs,
             pair_weights=weights_seed[0],
             rotation_weight=eval_config.ik_rotation_weight,
-            iterations=eval_config.ik_pink_arm_iterations if (cached_arm is not None or frame_index > 0) else eval_config.ik_pink_arm_initial_iterations,
+            iterations=eval_config.ik_pink_arm_iterations
+            if (cached_arm is not None or frame_index > 0)
+            else eval_config.ik_pink_arm_initial_iterations,
         )
         arm_solutions[frame_index] = solved
         previous_arm = solved.detach()
 
     combined = trainer._merge_qpos(arm_solutions, qpos_hand.detach())
     if batch > 0:
-        cache_state.eepose_decode_arm = arm_solutions[-1].detach().to(device="cpu", dtype=torch.float32).clone()
+        cache_state.eepose_decode_arm = (
+            arm_solutions[-1].detach().to(device="cpu", dtype=torch.float32).clone()
+        )
     return combined.detach().clone()
 
 
@@ -314,9 +344,11 @@ def main() -> None:
         Starts a Rerun session and logs trajectory playback.
     """
 
-    parser = argparse.ArgumentParser(description="Retarget one real trajectory to four xarm hand embodiments.")
+    parser = argparse.ArgumentParser(
+        description="Retarget one real trajectory to four xarm hand embodiments."
+    )
     parser.add_argument("--ckpt", type=str, default=None)
-    parser.add_argument("--data", type=str, default="Dataset/inspire-11_08.npz")
+    parser.add_argument("--data", type=str, default="Dataset/demo.npz")
     parser.add_argument("--side", type=str, default="right", choices=("right", "left"))
     args = parser.parse_args()
 
@@ -330,17 +362,25 @@ def main() -> None:
 
     config = TrainingConfig()
     trainer = CrossEmbodimentTrainer(target_hands, config)
-    ckpt_path = Path(args.ckpt).expanduser().resolve() if args.ckpt is not None else _find_latest_checkpoint(Path(config.checkpoint_dir))
+    ckpt_path = (
+        Path(args.ckpt).expanduser().resolve()
+        if args.ckpt is not None
+        else _find_latest_checkpoint(Path(config.checkpoint_dir))
+    )
     payload = torch.load(ckpt_path, map_location="cpu")
     trainer.load_autoencoders_from_payload(payload)
 
     with np.load(Path(args.data).expanduser().resolve()) as dataset:
         source_qpos = torch.as_tensor(dataset[f"{args.side}_qpos"], dtype=torch.float32)
 
-    source_norm = trainer.normalized_qpos(source_hand, source_qpos).to(device=config.device)
+    source_norm = trainer.normalized_qpos(source_hand, source_qpos).to(
+        device=config.device
+    )
 
     with torch.no_grad():
-        latents = encode_hand_sequence_eepose(trainer=trainer, hand_name=source_hand, qpos=source_norm)
+        latents = encode_hand_sequence_eepose(
+            trainer=trainer, hand_name=source_hand, qpos=source_norm
+        )
         decoded = {
             hand_name: decode_hand_sequence_eepose(
                 trainer=trainer,
@@ -357,7 +397,9 @@ def main() -> None:
     rr.init(recording_name, spawn=True)
     recording = rr.get_global_data_recording()
     overlap_offset = np.zeros(3, dtype=np.float32)
-    overlap_offsets = np.repeat(overlap_offset.reshape(1, 3), source_norm.shape[0], axis=0)
+    overlap_offsets = np.repeat(
+        overlap_offset.reshape(1, 3), source_norm.shape[0], axis=0
+    )
 
     source_array = source_norm.detach().cpu().numpy()
     visualize_hand_motion(
