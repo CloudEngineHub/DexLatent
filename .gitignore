@@ -1,5 +1,4 @@
 .DS_Store
-Checkpoints
 *.pyc
 *.sh
 Assets/paxini/meshes/*.glb

@@ -349,7 +349,11 @@ def main() -> None:
     parser = argparse.ArgumentParser(
         description="Retarget one real trajectory to four xarm hand embodiments."
     )
-    parser.add_argument("--ckpt", type=str, default=None)
+    parser.add_argument(
+        "--ckpt",
+        type=str,
+        default="Checkpoints/20260311_225425/checkpoint_epoch_1000.pt",
+    )
     parser.add_argument("--data", type=str, default="Dataset/demo.npz")
     parser.add_argument(
         "--side", type=str, default="both", choices=("right", "left", "both")

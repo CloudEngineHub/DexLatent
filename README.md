@@ -4,33 +4,27 @@ DexLatent implementation of the paper "Cross-Hand Latent Representation for Visi
 
 ![teaser](Assets/videos/teaser.gif)
 
-## Install
-
-```bash
-uv sync
-```
-
-## Train
-
-Run the training script with:
-
-```bash
-uv run -m HandLatent.train --num_steps 5000 --checkpoint_interval 1000
-```
-
-Checkpoints are written to:
-
-- `Checkpoints/<timestamp>/checkpoint_epoch_XXXX.pt`
-
 ## Inference and Visualization
+
+Run with our pretrained checkpoint:
+
+```bash
+uv run -m HandLatent.infer
+```
 
 By default, inference reads `Dataset/demo.npz` and visualizes:
 
 - source trajectory (origin)
 - four decoded trajectories (`xhand`, `ability`, `inspire`, `paxini`)
 
-Run with a specific checkpoint:
+## Train
+
+Run the training script with:
 
 ```bash
-uv run -m HandLatent.infer --ckpt Checkpoints/<timestamp>/checkpoint_epoch_XXXX.pt
+uv run -m HandLatent.train
 ```
+
+Checkpoints are written to:
+
+- `Checkpoints/<timestamp>/checkpoint_epoch_XXXX.pt`
